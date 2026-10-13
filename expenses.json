@@ -1,0 +1,11 @@
+[
+    {
+        "expense_id": "1",
+        "date": "2009-09-07",
+        "category": "fuel",
+        "amount": 800.0,
+        "tags": [
+            "petrol"
+        ]
+    }
+]
