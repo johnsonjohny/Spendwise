@@ -1,119 +1,93 @@
-
-import re
-from datetime import datetime
-
 from models import Expense, ExpenseTracker
-from storage import load_expenses, save_expenses
-from utils import parse_tags, get_valid_amount
-
-
-def get_valid_date():
-    while True:
-        date = input("Enter date (YYYY-MM-DD): ").strip()
-
-        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
-            print("Invalid format. Use YYYY-MM-DD.")
-            continue
-
-        try:
-            datetime.strptime(date, "%Y-%m-%d")
-            return date
-        except ValueError:
-            print("Invalid date. Please try again.")
-
-
-def get_valid_category():
-    while True:
-        category = input("Enter category: ").strip().lower()
-
-        if category:
-            return category
-
-        print("Category cannot be empty.")
-
+from storage import FILE_PATH, load_from_json, save_to_json
+from utils import (
+    InvalidInputError,
+    generate_expense_id,
+    get_valid_amount,
+    get_valid_budget,
+    get_valid_category,
+    get_valid_date,
+    parse_tags,
+)
 
 
 def add_new_expense(tracker):
-    # Add a new expense
-    print("\n--- Add Expense ---")
+    """Add one income or expense record."""
+    print("\n--- Add Transaction ---")
+    transaction_type = input("Type (expense/income): ").strip().lower()
+    while transaction_type not in {"expense", "income"}:
+        print("Enter 'expense' or 'income'.")
+        transaction_type = input("Type (expense/income): ").strip().lower()
 
-    # Automatically generate a simple ID
-    if tracker.expenses:
-        expense_id = max(int(e.expense_id) for e in tracker.expenses) + 1
-    else:
-        expense_id = 1
+    try:
+        expense_id = generate_expense_id(tracker.expenses)
+    except InvalidInputError as error:
+        print(error)
+        return
 
     date = get_valid_date()
     category = get_valid_category()
-    amount = get_valid_amount()
+    amount = get_valid_amount("Enter amount: ")
     tags = parse_tags(input("Enter tags separated by commas: "))
 
     expense = Expense(
-        expense_id=str(expense_id),
+        expense_id=expense_id,
         date=date,
         category=category,
         amount=amount,
-        tags=tags
+        tags=tags,
+        transaction_type=transaction_type,
     )
-
     tracker.add_expense(expense)
-    save_expenses(tracker.expenses)
-
-    print(f"Expense added successfully! ID: {expense_id}")
+    save_to_json(FILE_PATH, tracker.expenses)
+    print(f"Transaction added successfully! ID: {expense_id}")
+    show_budget_status(tracker)
 
 
 def view_expenses(tracker):
-    """Display all expenses."""
-    print("\n--- All Expenses ---")
-
+    """Display records in a table, optionally sorted by date or amount."""
+    print("\n--- All Transactions ---")
     if not tracker.expenses:
-        print("No expenses found.")
+        print("No transactions found.")
         return
 
-    for expense in tracker.expenses:
-        print(expense)
-
-
-def view_total_spending(tracker):
-    """Display total spending."""
-    total = tracker.get_total_spending()
-    print(f"\nTotal spending: ₹{total:.2f}")
-
-
-def check_budget(tracker):
-    """Check whether spending exceeds the budget."""
-    print(f"\nBudget limit: ₹{tracker.budget_limit:.2f}")
-    total = tracker.get_total_spending()
-    print(f"Total spending: ₹{total:.2f}")
-
-    if tracker.is_over_budget():
-        print("Warning: You have exceeded your budget!")
+    print("1. Sort by date (newest first)")
+    print("2. Sort by amount (highest first)")
+    choice = input("Sort option (Enter to keep saved order): ").strip()
+    if choice == "1":
+        expenses = tracker.sort_by_date()
+    elif choice == "2":
+        expenses = tracker.sort_by_amount()
     else:
-        remaining = tracker.budget_limit - total
-        print(f"Remaining budget: ₹{remaining:.2f}")
+        expenses = tracker.expenses
+
+    print(f"{'ID':<9} {'DATE':<12} {'TYPE':<9} {'CATEGORY':<16} {'AMOUNT':>12}  TAGS")
+    print("-" * 78)
+    for expense in expenses:
+        print(
+            f"{expense.expense_id:<9} {expense.date:<12} "
+            f"{expense.transaction_type:<9} {expense.category:<16} "
+            f"${expense.amount:>11.2f}  {', '.join(sorted(expense.tags))}"
+        )
 
 
 def view_category_summary(tracker):
-    """Display spending grouped by category."""
+    """Display expense totals grouped by category."""
     print("\n--- Category Summary ---")
-
     summary = tracker.category_summary()
-
     if not summary:
         print("No expenses available.")
         return
 
     for category, amount in summary.items():
-        print(f"{category.title()}: ₹{amount:.2f}")
+        print(f"{category.title()}: ${amount:.2f}")
 
 
 def filter_expenses(tracker):
-    """Filter expenses by category."""
+    """Search expense records by category using a linear scan."""
     category = get_valid_category()
     results = tracker.filter_by_category(category)
-
     print(f"\n--- Expenses in {category.title()} ---")
-
     if not results:
         print("No expenses found in this category.")
         return
@@ -122,76 +96,51 @@ def filter_expenses(tracker):
         print(expense)
 
 
-def sort_expenses(tracker):
-    """Sort expenses by amount or date."""
-    print("\n1. Sort by amount")
-    print("2. Sort by date")
-
-    choice = input("Choose an option: ").strip()
-
-    if choice == "1":
-        results = tracker.sort_by_amount()
-    elif choice == "2":
-        results = tracker.sort_by_date()
+def show_budget_status(tracker):
+    """Report whether spending is approaching or over the budget."""
+    budget = tracker.budget_limit
+    spending = tracker.get_total_spending()
+    print(f"Spending: ${spending:.2f}")
+    if budget <= 0:
+        print("No spending budget is set.")
+    elif tracker.is_over_budget():
+        print(f"Warning: spending is over the ${budget:.2f} budget.")
+    elif spending >= budget * 0.8:
+        print(f"Warning: spending is approaching the ${budget:.2f} budget.")
     else:
-        print("Invalid choice.")
-        return
-
-    print("\n--- Sorted Expenses ---")
-
-    for expense in results:
-        print(expense)
+        print(f"Budget remaining: ${budget - spending:.2f}")
 
 
 def main():
-    """Run the SpendWise application."""
-    expenses = load_expenses()
-    tracker = ExpenseTracker(expenses)
+    """Run the SpendWise command-line application."""
+    expenses = load_from_json()
+    budget_limit = get_valid_budget()
+    tracker = ExpenseTracker(expenses, budget_limit)
 
     print("Welcome to SpendWise!")
-
     while True:
-        print("\n========== SPENDWISE ==========")
         print("1. Add Expense")
-        print("2. View All Expenses")
-        print("3. View Total Spending")
-        print("4. Check Budget")
-        print("5. Category Summary")
-        print("6. Filter by Category")
-        print("7. Sort Expenses")
-        print("8. Exit")
-
-        choice = input("Enter your choice: ").strip()
+        print("2. View All Transactions")
+        print("3. View Category Summary")
+        print("4. Search Expenses by Category")
+        print("5. Save and Exit")
+        choice = input("Enter your choice: ").strip().lower()
 
         match choice:
             case "1":
                 add_new_expense(tracker)
-
             case "2":
                 view_expenses(tracker)
-
             case "3":
-                view_total_spending(tracker)
-
-            case "4":
-                check_budget(tracker)
-
-            case "5":
                 view_category_summary(tracker)
-
-            case "6":
+            case "4":
                 filter_expenses(tracker)
-
-            case "7":
-                sort_expenses(tracker)
-
-            case "8":
-                save_expenses(tracker.expenses)
+            case "5" | "exit":
+                save_to_json(FILE_PATH, tracker.expenses)
                 print("Thank you for using SpendWise!")
                 break
-
             case _:
-                print("Invalid choice. Please try again.")
+                print("Invalid option! Please enter a number from 1 to 5, or 'exit'.")
 
 
 if __name__ == "__main__":
