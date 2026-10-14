@@ -2,7 +2,6 @@ import re
 
 
 class Expense:
-    """One income or expense record stored by SpendWise."""
 
     def __init__(self, expense_id, date, category, amount, tags, transaction_type="expense"):
         self.expense_id = str(expense_id)
@@ -24,7 +23,6 @@ class Expense:
 
     @classmethod
     def from_dict(cls, data):
-        # Convert IDs from earlier versions to the required EXP-### format.
         expense_id = str(data["expense_id"])
         if expense_id.isdigit():
             expense_id = f"EXP-{int(expense_id):03d}"

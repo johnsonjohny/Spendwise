@@ -12,7 +12,6 @@ from utils import (
 
 
 def add_new_expense(tracker):
-    """Add one income or expense record."""
     print("\n--- Add Transaction ---")
     transaction_type = input("Type (expense/income): ").strip().lower()
     while transaction_type not in {"expense", "income"}:
@@ -45,7 +44,6 @@ def add_new_expense(tracker):
 
 
 def view_expenses(tracker):
-    """Display records in a table, optionally sorted by date or amount."""
     print("\n--- All Transactions ---")
     if not tracker.expenses:
         print("No transactions found.")
@@ -72,7 +70,6 @@ def view_expenses(tracker):
 
 
 def view_category_summary(tracker):
-    """Display expense totals grouped by category."""
     print("\n--- Category Summary ---")
     summary = tracker.category_summary()
     if not summary:
@@ -84,7 +81,6 @@ def view_category_summary(tracker):
 
 
 def filter_expenses(tracker):
-    """Search expense records by category using a linear scan."""
     category = get_valid_category()
     results = tracker.filter_by_category(category)
     print(f"\n--- Expenses in {category.title()} ---")
@@ -97,7 +93,6 @@ def filter_expenses(tracker):
 
 
 def show_budget_status(tracker):
-    """Report whether spending is approaching or over the budget."""
     budget = tracker.budget_limit
     spending = tracker.get_total_spending()
     print(f"Spending: ${spending:.2f}")
@@ -112,7 +107,6 @@ def show_budget_status(tracker):
 
 
 def main():
-    """Run the SpendWise command-line application."""
     expenses = load_from_json()
     budget_limit = get_valid_budget()
     tracker = ExpenseTracker(expenses, budget_limit)
